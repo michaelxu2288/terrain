@@ -82,6 +82,38 @@ const glUtil = {
         };
     },
 
+    axisPos: null,
+    axisInd: null,
+
+    init(gl) {
+        const pos = [
+            0, 0, 0,
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1
+        ];
+        const ind = [0, 1, 0, 2, 0, 3];
+
+        this.axisPos = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.axisPos);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
+
+        this.axisInd = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.axisInd);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Float32Array(ind), gl.STATIC_DRAW);
+    },
+
+    drawAxis(gl, program) {
+        {
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.axisPos);
+            gl.vertexAttribPointer(program.attribute.vPos, 3, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(program.attribute.vPos);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.axisInd);
+        } {
+            gl.drawElements(gl.LINES, 3, gl.UNSIGNED_SHORT, 0);
+        }
+    }
+
 }
 
 
@@ -150,7 +182,6 @@ const Mesh = {
                 points.push(width, row * half_sqr3 * side, height(width + xi, row * half_sqr3 * side + yi));
             }
         }
-        console.log(points);
 
         // Even row: nwidth + 1 points
         // Odd row: nwidth + 2 points
@@ -244,4 +275,12 @@ const Mesh = {
     cube(gl, size) {
 
     },
+}
+
+
+
+
+
+const Cubemap = {
+    create
 }

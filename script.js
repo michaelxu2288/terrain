@@ -1,17 +1,77 @@
+function loadDepedencies() {
+    /**
+     * 
+    <script src="gl-matrix.js"></script>
+    <script src="simplex-noise.js"></script>
+    <script src="ui.js"></script>
+    <script src="utils.js"></script>
+    <script src="noise.js"></script>
+    <script src="gl-utils.js"></script>
+    <script src="input.js"></script>
+     */
+    const needed_scripts = ["gl-matrix.js", "simplex-noise.js", "ui.js", "utils.js", "noise.js", "gl-utils.js", "input.js"];
+    const promises = [];
+    needed_scripts.forEach((script) => {
+        promises.push(new Promise((res, rej) => {
+            var element = document.createElement("script");
+            element.src = script;
+            document.body.appendChild(element);
+            element.onload = () => {
+                res();
+            }
+        }));
+    });
+
+    Promise.all(promises).then(() => {
+        //document.getElementById("main-loading").remove();
+        createUI().then(() => {
+            setTimeout(() => {
+                main()
+            }, 5);
+        })
+    });
+
+}
+
+loadDepedencies();
+
 var cubeRotation = 0.0;
-const mat4 = glMatrix.mat4
-main();
+
+var Settings = {
+    height_map_size: 11,
+    noise_scale: 14,
+    tiles: 8,
+    trisPerTile: 100,
+    tileSize: 1,
+    tileSkip: 1,
+    snowLine: 0,
+    steepnessCutoff: 0.6
+}
+
+const logistic = (x) => {
+    return 1 / (1 + Math.exp(-x / 1000)) + 0.01;
+}
 
 var mouse_dragging = false;
 const Camera = {
-    rot: { x: -Math.PI / 2, y: 0, z: 0 },
-    sca: 1,
+    rot: { x: -1.0750000000000002, y: 0, z: 0 },
+    sca: 10,
 }
 
+var regenerateBuffers = false;
+var changed = false;
+
+var idle = true;
+var n;
+var map;
+
+var gl;
+var buffers;
 
 function main() {
+
     const canvas = document.querySelector('#gl-terrain');
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
 
     // If we don't have a GL context, give up now
 
@@ -23,17 +83,20 @@ function main() {
 
     canvas.addEventListener("mousedown", () => {
         mouse_dragging = true;
+        change = true;
     });
     canvas.addEventListener("mouseup", () => {
         mouse_dragging = false;
     });
     canvas.addEventListener("mousemove", (e) => {
         if (mouse_dragging) {
+            change = true;
             mouse_dragged(e);
         }
     });
     canvas.addEventListener("wheel", (e) => {
         wheel_scroll(e);
+        change = true;
     })
 
     // Vertex shader program
@@ -59,87 +122,112 @@ function main() {
     // Fragment shader program
 
     const fsSource = `
+    uniform highp float snowline;
+    uniform highp float steepnessCutoff;
+
     varying highp float height;
     varying highp vec3 normal;
     void main(void) {
 
-        highp vec3 col = vec3(1.0,1.0,1.0);
+        highp vec3 col = vec3(0.3,0.3, 0.3);
 
         highp float steepness = dot(vec3(0.0,0.0,1.0), normal);
 
-        if(height > 0.4){
-            if(steepness < 0.6){
-                col = vec3(0.5, 0.5, 0.5);
-            }
-        }else{ 
-            if(steepness > 0.9){
-                col = vec3(0.4,0.7,0.4);
-            }else if(steepness < 0.8){
-                col = vec3(0.5, 0.5, 0.5);
-            }else {
-                col = vec3(0.2, 0.5, 0.2);
+        if(steepness > steepnessCutoff){
+            if (height < snowline){
+                col = vec3(0.1, 0.7, 0.3);
+            }else{
+                col = vec3(1.0, 1.0, 1.0);
             }
         }
 
-        highp float light = dot(normalize(vec3(1.0,1.0,1.0)), normal) + 0.1;
+        highp float light = dot(normalize(vec3(1.0,1.0,1.0)), normal) + 0.2;
 
         gl_FragColor = vec4(col*light, 1.0);
-        //gl_FragColor = normal;
-        //gl_FragColor = vec4(1.0,1.0,1.0,1.0);
+        //gl_FragColor = vec4(normal,1.0);
+        //gl_FragColor = vec4(steepness,steepness,steepness,1.0);
     }
   `;
 
-    const programInfo = glUtil.createProgramInfo(gl, vsSource, fsSource, { attribute: ["vPos", "norm"], uniform: ["MVMat", "PMat", "NMat"] });
+    const programInfo = glUtil.createProgramInfo(gl, vsSource, fsSource, { attribute: ["vPos", "norm"], uniform: ["MVMat", "PMat", "NMat", "snowline", "steepnessCutoff"] });
 
-    // Here's where we call the routine that builds all the
-    // objects we'll be drawing.
-    const buffers = initBuffers(gl, -5, -5, 5, 5);
+    if (!map) {
+        generateMap();
+    }
 
     var then = 0;
 
     glUtil.init(gl);
 
+    change = true;
     // Draw the scene repeatedly
     function render(now) {
         now *= 0.001; // convert to seconds
         const dt = now - then;
         then = now;
-
-        if (yee)
+        if (buffers && yee && change) {
             drawScene(gl, programInfo, buffers, dt);
-
+            change = false
+        }
         //if (yee)
+        Input.text("fps", Math.round(1 / dt) + " frames per second");
         requestAnimationFrame(render);
     }
     requestAnimationFrame(render);
 }
 
-function initBuffers(gl, minx = 0, miny = 0, maxx = 1, maxy = 1, stepx = 1, stepy = 1) {
-    const noise = new FractalNoise({
-        noise_level_count: 10,
-        persistence: 0.3,
-        lacunarity: 2,
-        dimension: {
-            sca_x: 0.5,
-            sca_y: 0.5,
+function generateMap() {
+    idle = false;
+    Input.text("status", "Generating map using diamond-square");
+    var promise = new Promise(
+        (res, rej) => {
+            setTimeout(() => {
+                n = Math.pow(2, Settings.height_map_size) + 1;
+                map = DiamondSquare.map(n, Settings.noise_scale);
+
+                res();
+            }, 10);
+
         }
+    ).then(() => {
+        initBuffers()
     });
+}
 
-    const noise2 = new SimplexNoise();
+function initBuffers() {
 
-    var out = []
+    idle = false;
+    Input.text("status", "Generating Tiles");
+    const promise = new Promise(
+        (res, rej) => {
+            setTimeout(() => {
+                if (buffers != null) {
+                    buffers.forEach((buffer) => {
+                        gl.deleteBuffer(buffer.vertices);
+                        gl.deleteBuffer(buffer.indices);
+                        gl.deleteBuffer(buffer.normals);
+                    });
+                }
 
-    var width = 200 * 0.005;
-    var height = 200 * (Math.sqrt(3) / 2) * 0.005;
 
-    for (var xi = minx; xi < maxx; xi += stepx) {
-        for (var yi = miny; yi < maxy; yi += stepy) {
-            out.push(Mesh.isoplane(gl, 0.005, 200, 200, xi * width, yi * height, (x, y) => {
-                return noise.noise2D(x, y) * 2 * noise2.noise2D(x * 0.1, y * 0.1);
-            }));
+                buffers = []
+                const z = Settings.tiles;
+                const nTris = Settings.trisPerTile;
+                const tileSize = Settings.tileSize;
+                const skip = Settings.tileSkip;
+                for (var i = -z; i < z; i++) {
+                    for (var j = -z; j < z; j++) {
+                        buffers.push(DiamondSquare.getTile(gl, map, n, i * tileSize, j * tileSize, i * nTris + z * nTris, j * nTris + z * nTris, nTris + 1, nTris + 1, tileSize, tileSize, skip));
+                    }
+                }
+                res();
+            }, 5)
         }
-    }
-    return out;
+    ).then(() => {
+        idle = true;
+        change = true;
+        Input.text("status", "Finished and Rendering");
+    });
 }
 
 var theta = 0;
@@ -163,8 +251,8 @@ function drawScene(gl, programInfo, buffers, dt) {
 
     theta += dt;
 
-    const view = mat4.create();
-    const proj = mat4.create();
+    const view = glMatrix.mat4.create();
+    const proj = glMatrix.mat4.create();
 
     const fieldOfView = 45 * Math.PI / 180; // in radians
     const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
@@ -173,32 +261,32 @@ function drawScene(gl, programInfo, buffers, dt) {
 
     // note: glmatrix.js always has the first argument
     // as the destination to receive the result.
-    mat4.perspective(proj,
+    glMatrix.mat4.perspective(proj,
         fieldOfView,
         aspect,
         zNear,
         zFar);
 
-    mat4.translate(view, // destination matrix
+    glMatrix.mat4.translate(view, // destination matrix
         view, // matrix to translate
         [0.0, 0.0, -Camera.sca]);
 
-    //mat4.rotate(view, view, theta * .7, [0, 1, 0]);
-    mat4.rotateX(view, view, Camera.rot.x);
-    mat4.rotateZ(view, view, Camera.rot.z);
+    //glMatrix.mat4.rotate(view, view, theta * .7, [0, 1, 0]);
+    glMatrix.mat4.rotateX(view, view, Camera.rot.x);
+    glMatrix.mat4.rotateZ(view, view, Camera.rot.z);
 
     gl.useProgram(programInfo.program);
 
     buffers.forEach(
             (buffer) => {
-                const mv_mat = mat4.create();
+                const mv_mat = glMatrix.mat4.create();
 
-                mat4.multiply(mv_mat, view, buffer.model_mat);
+                glMatrix.mat4.multiply(mv_mat, view, buffer.model_mat);
 
-                const norm_mat = mat4.create();
+                const norm_mat = glMatrix.mat4.create();
 
-                mat4.invert(norm_mat, buffer.model_mat);
-                mat4.transpose(norm_mat, norm_mat); {
+                glMatrix.mat4.invert(norm_mat, buffer.model_mat);
+                glMatrix.mat4.transpose(norm_mat, norm_mat); {
                     gl.bindBuffer(gl.ARRAY_BUFFER, buffer.vertices);
                     gl.vertexAttribPointer(programInfo.attribute.vPos, 3, gl.FLOAT, false, 0, 0);
                     gl.enableVertexAttribArray(programInfo.attribute.vPos);
@@ -215,6 +303,9 @@ function drawScene(gl, programInfo, buffers, dt) {
                 gl.uniformMatrix4fv(programInfo.uniform.MVMat, false, mv_mat);
                 gl.uniformMatrix4fv(programInfo.uniform.PMat, false, proj);
                 gl.uniformMatrix4fv(programInfo.uniform.NMat, false, norm_mat);
+
+                gl.uniform1f(programInfo.uniform.snowline, Settings.snowLine);
+                gl.uniform1f(programInfo.uniform.steepnessCutoff, Settings.steepnessCutoff);
 
                 {
                     gl.drawElements(gl.TRIANGLES, buffer.nvert, gl.UNSIGNED_SHORT, 0);
@@ -247,6 +338,6 @@ function mouse_dragged(e) {
  * @param {WheelEvent} e 
  */
 function wheel_scroll(e) {
-    Camera.sca += e.deltaY * 0.1;
-    Camera.sca = Math.max(Math.min(Camera.sca, 10), 0.1);
+    Camera.sca += e.deltaY * 0.01;
+    Camera.sca = Math.max(Math.min(Camera.sca, 50), 0.1);
 }

@@ -3,11 +3,13 @@ html {
     width: 100%;
     height: 100%;
     overflow: hidden;
+    position: relative;
 }
 
 body {
-    display: flex;
-    flex-direction: row;
+    display: grid;
+    grid-template-rows: 100%;
+    grid-template-columns: 800px auto;
     background-color: black;
 }
 
@@ -46,4 +48,95 @@ input {
 
 label {
     color: white;
+}
+
+span {
+    color: white;
+}
+
+.title {
+    font-size: 36px;
+}
+
+.subtitle {
+    font-size: 24px;
+}
+
+button {
+    background: none;
+    border-color: white;
+    color: white;
+    border-width: 0.2px;
+}
+
+#inputs {
+    padding: 5px;
+}
+
+.gooey {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 142px;
+    height: 40px;
+    margin: -20px 0 0 -71px;
+    background: black;
+    filter: contrast(20);
+}
+
+.gooey .dot {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 12px;
+    left: 15px;
+    filter: blur(4px);
+    background: #FFF;
+    border-radius: 50%;
+    transform: translateX(0);
+    animation: dot 2.8s infinite;
+}
+
+.gooey .dots {
+    transform: translateX(0);
+    margin-top: 12px;
+    margin-left: 31px;
+    animation: dots 2.8s infinite;
+}
+
+.gooey .dots span {
+    display: block;
+    float: left;
+    width: 16px;
+    height: 16px;
+    margin-left: 16px;
+    filter: blur(4px);
+    background: #FFF;
+    border-radius: 50%;
+}
+
+@keyframes dot {
+    50% {
+        transform: translateX(96px)
+    }
+}
+
+@keyframes dots {
+    50% {
+        transform: translateX(-31px)
+    }
+}
+
+#main-loading {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    left: 0;
+    top: 0;
+    background-color: #FFF;
+}
+
+.spacer {
+    display: inline-block;
+    width: 2em;
 }

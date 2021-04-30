@@ -9,7 +9,7 @@ function loadDepedencies() {
     <script src="gl-utils.js"></script>
     <script src="input.js"></script>
      */
-    const needed_scripts = ["gl-matrix.js", "simplex-noise.js", "ui.js", "utils.js", "noise.js", "gl-utils.js", "input.js"];
+    const needed_scripts = ["shaders.js", "gl-matrix.js", "simplex-noise.js", "ui.js", "utils.js", "noise.js", "gl-utils.js", "input.js"];
     const promises = [];
     needed_scripts.forEach((script) => {
         promises.push(new Promise((res, rej) => {
@@ -41,11 +41,14 @@ var Settings = {
     height_map_size: 11,
     noise_scale: 14,
     tiles: 8,
-    trisPerTile: 100,
+    trisPerTile: 50,
     tileSize: 1,
     tileSkip: 1,
     snowLine: 0,
-    steepnessCutoff: 0.6
+    steepnessCutoff: 0.6,
+    blurRadius: 0,
+    wireframe: false,
+    heightScale: 1,
 }
 
 const logistic = (x) => {
@@ -99,57 +102,10 @@ function main() {
         change = true;
     })
 
-    // Vertex shader program
-
-    const vsSource = `
-    attribute vec4 vPos;
-    attribute vec3 norm;
-    uniform mat4 MVMat;
-    uniform mat4 PMat;
-    uniform mat4 NMat;
-
-    varying highp float height;
-    varying highp vec3 normal;
-    
-    void main(void) {
-        gl_Position = PMat * MVMat * vPos;
-        gl_PointSize = 10.0;
-        normal = (NMat * vec4(norm, 1.0)).xyz;
-        height = vPos.z;
+    const programs = {
+        main: loadMainShader(),
+        wireframe: loadWireframeShader(),
     }
-  `;
-
-    // Fragment shader program
-
-    const fsSource = `
-    uniform highp float snowline;
-    uniform highp float steepnessCutoff;
-
-    varying highp float height;
-    varying highp vec3 normal;
-    void main(void) {
-
-        highp vec3 col = vec3(0.3,0.3, 0.3);
-
-        highp float steepness = dot(vec3(0.0,0.0,1.0), normal);
-
-        if(steepness > steepnessCutoff){
-            if (height < snowline){
-                col = vec3(0.1, 0.7, 0.3);
-            }else{
-                col = vec3(1.0, 1.0, 1.0);
-            }
-        }
-
-        highp float light = dot(normalize(vec3(1.0,1.0,1.0)), normal) + 0.2;
-
-        gl_FragColor = vec4(col*light, 1.0);
-        //gl_FragColor = vec4(normal,1.0);
-        //gl_FragColor = vec4(steepness,steepness,steepness,1.0);
-    }
-  `;
-
-    const programInfo = glUtil.createProgramInfo(gl, vsSource, fsSource, { attribute: ["vPos", "norm"], uniform: ["MVMat", "PMat", "NMat", "snowline", "steepnessCutoff"] });
 
     if (!map) {
         generateMap();
@@ -166,7 +122,7 @@ function main() {
         const dt = now - then;
         then = now;
         if (buffers && yee && change) {
-            drawScene(gl, programInfo, buffers, dt);
+            drawScene(gl, programs, buffers, dt);
             change = false
         }
         //if (yee)
@@ -185,6 +141,7 @@ function generateMap() {
                 n = Math.pow(2, Settings.height_map_size) + 1;
                 map = DiamondSquare.map(n, Settings.noise_scale);
 
+                HeightMap.averageBlur(map, n, Settings.blurRadius)
                 res();
             }, 10);
 
@@ -201,25 +158,31 @@ function initBuffers() {
     const promise = new Promise(
         (res, rej) => {
             setTimeout(() => {
+
                 if (buffers != null) {
-                    buffers.forEach((buffer) => {
+                    const deleting = buffers;
+                    buffers = [];
+                    deleting.forEach((buffer) => {
                         gl.deleteBuffer(buffer.vertices);
                         gl.deleteBuffer(buffer.indices);
                         gl.deleteBuffer(buffer.normals);
+                        gl.deleteBuffer(buffer.wireframe);
                     });
                 }
 
 
-                buffers = []
+                const out = []
                 const z = Settings.tiles;
                 const nTris = Settings.trisPerTile;
                 const tileSize = Settings.tileSize;
                 const skip = Settings.tileSkip;
+                const scale = Settings.heightScale
                 for (var i = -z; i < z; i++) {
                     for (var j = -z; j < z; j++) {
-                        buffers.push(DiamondSquare.getTile(gl, map, n, i * tileSize, j * tileSize, i * nTris + z * nTris, j * nTris + z * nTris, nTris + 1, nTris + 1, tileSize, tileSize, skip));
+                        out.push(DiamondSquare.getTile(gl, map, n, i * tileSize, j * tileSize, (i + z) * nTris * skip, (j + z) * nTris * skip, nTris, nTris, tileSize, tileSize, skip, scale));
                     }
                 }
+                buffers = out;
                 res();
             }, 5)
         }
@@ -239,7 +202,7 @@ var theta = 0;
  * @param {*} buffers 
  * @param {*} dt 
  */
-function drawScene(gl, programInfo, buffers, dt) {
+function drawScene(gl, programs, buffers, dt) {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clearDepth(1.0);
     gl.enable(gl.DEPTH_TEST);
@@ -257,7 +220,7 @@ function drawScene(gl, programInfo, buffers, dt) {
     const fieldOfView = 45 * Math.PI / 180; // in radians
     const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
     const zNear = 0.1;
-    const zFar = 100.0;
+    const zFar = 1000.0;
 
     // note: glmatrix.js always has the first argument
     // as the destination to receive the result.
@@ -275,10 +238,22 @@ function drawScene(gl, programInfo, buffers, dt) {
     glMatrix.mat4.rotateX(view, view, Camera.rot.x);
     glMatrix.mat4.rotateZ(view, view, Camera.rot.z);
 
-    gl.useProgram(programInfo.program);
+    var program = programs.main
+    if (Settings.wireframe) {
+        program = programs.wireframe;
+    }
 
+    gl.useProgram(program.program);
     buffers.forEach(
             (buffer) => {
+
+                if (!buffer.vertices || !buffer.normals || !buffer.indices) {
+                    return;
+                }
+                if (Settings.wireframe && !buffer.wireframe) {
+                    return;
+                }
+
                 const mv_mat = glMatrix.mat4.create();
 
                 glMatrix.mat4.multiply(mv_mat, view, buffer.model_mat);
@@ -288,27 +263,42 @@ function drawScene(gl, programInfo, buffers, dt) {
                 glMatrix.mat4.invert(norm_mat, buffer.model_mat);
                 glMatrix.mat4.transpose(norm_mat, norm_mat); {
                     gl.bindBuffer(gl.ARRAY_BUFFER, buffer.vertices);
-                    gl.vertexAttribPointer(programInfo.attribute.vPos, 3, gl.FLOAT, false, 0, 0);
-                    gl.enableVertexAttribArray(programInfo.attribute.vPos);
+                    gl.vertexAttribPointer(program.attribute.vPos, 3, gl.FLOAT, false, 0, 0);
+                    gl.enableVertexAttribArray(program.attribute.vPos);
                 }
 
-                {
+                if (!Settings.wireframe && buffer.normals) {
                     gl.bindBuffer(gl.ARRAY_BUFFER, buffer.normals);
-                    gl.vertexAttribPointer(programInfo.attribute.norm, 3, gl.FLOAT, false, 0, 0);
-                    gl.enableVertexAttribArray(programInfo.attribute.norm);
+                    gl.vertexAttribPointer(program.attribute.norm, 3, gl.FLOAT, false, 0, 0);
+                    gl.enableVertexAttribArray(program.attribute.norm);
                 }
 
-                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer.indices);
+                if (Settings.wireframe) {
+                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer.wireframe);
+                } else {
+                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer.indices);
+                }
 
-                gl.uniformMatrix4fv(programInfo.uniform.MVMat, false, mv_mat);
-                gl.uniformMatrix4fv(programInfo.uniform.PMat, false, proj);
-                gl.uniformMatrix4fv(programInfo.uniform.NMat, false, norm_mat);
+                gl.uniformMatrix4fv(program.uniform.MVMat, false, mv_mat);
+                gl.uniformMatrix4fv(program.uniform.PMat, false, proj);
 
-                gl.uniform1f(programInfo.uniform.snowline, Settings.snowLine);
-                gl.uniform1f(programInfo.uniform.steepnessCutoff, Settings.steepnessCutoff);
+                if (!Settings.wireframe) {
+                    gl.uniformMatrix4fv(program.uniform.NMat, false, norm_mat);
+                    gl.uniform1f(program.uniform.snowline, Settings.snowLine);
+                    gl.uniform1f(program.uniform.steepnessCutoff, Settings.steepnessCutoff);
+                }
 
                 {
-                    gl.drawElements(gl.TRIANGLES, buffer.nvert, gl.UNSIGNED_SHORT, 0);
+                    if (Settings.wireframe) {
+                        gl.drawElements(gl.LINES, 2 * buffer.nvert, gl.UNSIGNED_SHORT, 0);
+                    } else {
+                        gl.drawElements(gl.TRIANGLES, buffer.nvert, gl.UNSIGNED_SHORT, 0);
+                    }
+                } {
+                    gl.disableVertexAttribArray(program.attribute.vPos);
+                    if (!Settings.wireframe) {
+                        gl.disableVertexAttribArray(program.attribute.norm);
+                    }
                 }
             }
         )
@@ -339,5 +329,5 @@ function mouse_dragged(e) {
  */
 function wheel_scroll(e) {
     Camera.sca += e.deltaY * 0.01;
-    Camera.sca = Math.max(Math.min(Camera.sca, 50), 0.1);
+    Camera.sca = Math.max(Math.min(Camera.sca, 1000), 0.1);
 }

@@ -29,7 +29,7 @@ const Input = {
         slider.element.value = settings.value;
         slider.value_element.innerText = settings.displayed_text(settings.value);
         slider.element.addEventListener("input", (e) => {
-            callback(e.target.value);
+            callback(parseFloat(e.target.value));
             slider.value_element.innerText = settings.displayed_text(e.target.value);
         });
 
@@ -121,5 +121,30 @@ const Input = {
         Input.inputs[name] = thing;
         Input.orderings.push(thing);
         Input.element.appendChild(thing.element);
+    },
+    createCheckbox(title, callback, settings) {
+        settings = defaults(settings, {
+            value: false,
+        });
+        const slider = {
+            title: title,
+            title_element: document.createElement("label"),
+            element: document.createElement("input"),
+            settings: settings,
+            callback: callback
+        };
+        slider.title_element.innerText = title;
+        slider.element.type = "checkbox";
+        slider.element.value = settings.value;
+        slider.element.addEventListener("input", (e) => {
+            callback(e.target.checked);
+        });
+
+        Input.orderings.push(slider);
+        const spacer = document.createElement("span");
+        spacer.className = "spacer";
+        Input.element.appendChild(spacer);
+        Input.element.appendChild(slider.element);
+        Input.element.appendChild(slider.title_element);
     }
 }

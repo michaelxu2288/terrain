@@ -640,7 +640,7 @@ const DiamondSquare = {
 
         return heights;
     },
-    getTile(gl, map, n, x, y, tx, ty, nx, ny, width = 10, height = 10, skip = 1) {
+    getTile(gl, map, n, x, y, tx, ty, nx, ny, width = 10, height = 10, skip = 1, height_scale = 1) {
 
         const random = () => {
             return Math.random() * 2 - 1;
@@ -650,8 +650,11 @@ const DiamondSquare = {
             return (n * y + x);
         }
         var points = [];
+        nx++;
+        ny++;
         const x_sca = width / (nx - 1);
         const y_sca = height / (ny - 1);
+
         for (var j = 0; j < nx; j++) {
             for (var i = 0; i < ny; i++) {
                 var noise_x = random() * 0.5;
@@ -661,30 +664,37 @@ const DiamondSquare = {
                     noise_x = noise_y = 0;
                 }
 
-                points.push(x_sca * (j + noise_x), y_sca * (i + noise_y), map[index(j * skip + tx, i * skip + ty)]);
+                points.push(x_sca * (j + noise_x), y_sca * (i + noise_y), height_scale * map[index(j * skip + tx, i * skip + ty)]);
             }
         }
 
 
 
         var indices = [];
+        var wireframe = [];
 
         for (var j = 0; j < nx - 1; j++) {
             for (var i = 0; i < ny - 1; i++) {
                 indices.push(i + 1 + j * nx, i + j * nx, i + 1 + (j + 1) * nx);
                 indices.push(i + j * nx, i + (j + 1) * nx, i + 1 + (j + 1) * nx);
+                wireframe.push(i + 1 + j * nx, i + j * nx, i + j * nx, i + 1 + (j + 1) * nx, i + 1 + (j + 1) * nx, i + 1 + j * nx, );
+                wireframe.push(i + j * nx, i + (j + 1) * nx, i + (j + 1) * nx, i + 1 + (j + 1) * nx, i + 1 + (j + 1) * nx, i + j * nx);
             }
         }
 
         const posbuf = gl.createBuffer();
         const indbuf = gl.createBuffer();
         const norbuf = gl.createBuffer();
+        const wirbuf = gl.createBuffer();
 
         gl.bindBuffer(gl.ARRAY_BUFFER, posbuf);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(points), gl.STATIC_DRAW);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, norbuf);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(Mesh.recalculateNormals(points, indices)), gl.STATIC_DRAW);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, wirbuf);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(wireframe), gl.STATIC_DRAW);
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indbuf);
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
@@ -700,6 +710,7 @@ const DiamondSquare = {
             normals: norbuf,
             nvert: indices.length,
             model_mat: mat,
+            wireframe: wirbuf
         };
     }
 }

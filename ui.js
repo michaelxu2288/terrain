@@ -39,7 +39,15 @@ function createUI() {
             step: 0.01,
             value: Settings.noise_scale
         })
-
+        Input.break();
+        Input.createRangeSlider("Blur radius", (e) => {
+            Settings.blurRadius = e;
+        }, {
+            min: 0,
+            max: 20,
+            step: 1,
+            value: Settings.blurRadius,
+        });
         Input.break();
         Input.break();
 
@@ -87,20 +95,25 @@ function createUI() {
             }
         })
 
-        // Input.break();
+        Input.break();
 
-        // Input.createRangeSlider("Triangles per Tile", (e) => {
-        //     Settings.trisPerTile = e;
-        // }, {
-        //     min: 1,
-        //     max: 200,
-        //     step: 1,
-        //     value: Settings.trisPerTile,
-        //     displayed_text: (e) => {
-        //         const val = 2 * e;
-        //         return val + " triangles per tile";
-        //     }
-        // })
+        Input.createRangeSlider("Triangles per Tile", (e) => {
+            Settings.trisPerTile = e;
+            if (checkOverflowBounds()) {
+                Input.text("error", "You are rendering more heights than you height map size, and will probably see an overflow if you use these settings. You can fix this by decreasing the number of tiles you are rendering or increasing your height map size. This will not crash the program.")
+            } else {
+                Input.text("error", "")
+            }
+        }, {
+            min: 1,
+            max: 200,
+            step: 1,
+            value: Settings.trisPerTile,
+            displayed_text: (e) => {
+                const val = 2 * e;
+                return val + " triangles per tile";
+            }
+        })
 
         Input.break();
         Input.createRangeSlider("Triangle Skip (Don't mess with this one unless you know what you are doing)", (e) => {
@@ -114,6 +127,16 @@ function createUI() {
                 const val = e;
                 return "Skip " + val + (val == 1 ? " triangle" : " triangles");
             }
+        })
+        Input.break();
+        Input.break();
+        Input.createRangeSlider("Heightmap Scale", (e) => {
+            Settings.heightScale = e;
+        }, {
+            min: 0.1,
+            max: 100,
+            step: 0.1,
+            value: Settings.heightScale,
         })
         Input.break();
         Input.break();
@@ -145,6 +168,13 @@ function createUI() {
             max: 1,
             step: 0.01,
             value: Settings.steepnessCutoff,
+        });
+        Input.break();
+        Input.createCheckbox("Wireframe", (e) => {
+            Settings.wireframe = e;
+            change = true;
+        }, {
+
         });
         Input.break();
         Input.break();

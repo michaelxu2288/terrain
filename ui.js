@@ -13,10 +13,10 @@ function createUI() {
         Input.break();
         Input.subtitle("maptitle", "Map Settings (Requires Regeneration)")
         Input.break();
-        Input.createRangeSlider("Height map size", (e) => {
+        Input.createRangeSlider("Height map size (by the way, did you know i made this website?)", (e) => {
             Settings.height_map_size = e;
             if (checkOverflowBounds()) {
-                Input.text("error", "You are rendering more heights than you height map size, and will probably see an overflow if you use these settings. You can fix this by decreasing the number of tiles you are rendering or increasing your height map size. This will not crash the program.")
+                Input.text("error", "fucking dumbass. You are rendering more heights than you height map size, and will probably see an overflow if you use these settings. You can fix this by decreasing the number of tiles you are rendering or increasing your height map size. This will not crash the program.")
             } else {
                 Input.text("error", "")
             }
@@ -33,7 +33,7 @@ function createUI() {
 
         Input.break();
 
-        Input.createRangeSlider("Noise Scale", (e) => {
+        Input.createRangeSlider("Noise Scale (i spent a lot of time making this website)", (e) => {
             Settings.noise_scale = e;
         }, {
             min: 0.01,
@@ -42,7 +42,7 @@ function createUI() {
             value: Settings.noise_scale
         })
         Input.break();
-        Input.createRangeSlider("Blur radius", (e) => {
+        Input.createRangeSlider("Blur radius (A=pi*r^2)", (e) => {
             Settings.blurRadius = e;
         }, {
             min: 0,
@@ -53,7 +53,7 @@ function createUI() {
         Input.break();
         Input.break();
 
-        Input.createButton("Regenerate map", () => {
+        Input.createButton("Regenerate map, click this button to get your ip tracked", () => {
             if (idle) {
                 generateMap();
             }
@@ -62,7 +62,7 @@ function createUI() {
 
 
         Input.break();
-        Input.subtitle("tiletitle", "Tile Settings (Requires Regeneration)");
+        Input.subtitle("tiletitle", "Tile Settings (Requires Regeneration) (ATTENTION: Mathias Ooi (15M), is currently being tracked by the Federal Bureau of Investigation (FBI). If you have any knowledge on his whereabouts, please contact us at +1 408-207-6009");
         Input.break();
 
         Input.createRangeSlider("Number of Tiles", (e) => {

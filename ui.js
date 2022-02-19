@@ -8,7 +8,7 @@ function createUI() {
     return new Promise((res, rej) => {
         let text = "my website";
         let result = text.link("https://www.mathias.cf");
-        Input.title("title", "Terrain Generator (By Mathias Ooi, follow me at " + result + ")");
+        Input.title("title", "Terrain Generator (By Mathias Ooi, follow me at www.mathias.cf)");
         Input.break();
         Input.break();
         Input.subtitle("maptitle", "Map Settings (Requires Regeneration)")
